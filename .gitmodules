@@ -1,0 +1,3 @@
+[submodule "radar_firmware/lib/Servo"]
+	path = radar_firmware/lib/Servo
+	url = git@github.com:arduino-libraries/Servo.git
