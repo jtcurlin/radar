@@ -20,7 +20,7 @@ Controller::Controller(std::shared_ptr<RadarModel> model)
 }
 
 Controller::~Controller() {
-    disconnect_control_unit();
+    // disconnect_control_unit();
 }
 
 /*

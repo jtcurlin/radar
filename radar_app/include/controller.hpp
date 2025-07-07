@@ -33,7 +33,7 @@ private:
     std::string m_radar_ip;
     
     // for simulated data when not connected
-    float m_sim_sweep_angle_deg = 0.0;
-    double m_time_since_last_sim_detection = 0.0;
-    std::chrono::steady_clock::time_point m_last_tick_time;
+    // float m_sim_sweep_angle_deg = 0.0;
+    // double m_time_since_last_sim_detection = 0.0;
+    // std::chrono::steady_clock::time_point m_last_tick_time;
 };

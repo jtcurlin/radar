@@ -1,46 +1,57 @@
 // src/platform.mm
 
 #import <AppKit/AppKit.h>
-#import <QuartzCore/CAMetalLayer.h>
 #import <Metal/Metal.h>
+#import <QuartzCore/CAMetalLayer.h>
 
 #import <glob.h>
 
+#include "controller.hpp"
 #include "platform.hpp"
 #include "radar.hpp"
 #include "renderer.hpp"
-#include "controller.hpp"
 
 @interface RadarView : NSView
-@property (nonatomic, strong) CAMetalLayer* metalLayer;
+@property (nonatomic, strong) CAMetalLayer *metalLayer;
 @end
+
 @implementation RadarView
-+ (Class)layerClass { return [CAMetalLayer class]; }
-- (instancetype)initWithFrame:(NSRect)frame {
++ (Class)layerClass
+{
+    return [CAMetalLayer class];
+}
+
+- (instancetype)initWithFrame:(NSRect)frame
+{
     self = [super initWithFrame:frame];
-    if (self) {
+    if (self)
+    {
         self.wantsLayer = YES;
-        _metalLayer = (CAMetalLayer*)self.layer;
+        _metalLayer = (CAMetalLayer *)self.layer;
         _metalLayer.pixelFormat = MTLPixelFormatBGRA8Unorm;
         _metalLayer.contentsScale = NSScreen.mainScreen.backingScaleFactor;
     }
     return self;
 }
-- (CALayer*)makeBackingLayer { return [CAMetalLayer layer]; }
-@end
 
+- (CALayer *)makeBackingLayer
+{
+    return [CAMetalLayer layer];
+}
+@end
 
 // main application delegate
 @interface AppDelegate : NSObject <NSApplicationDelegate>
-@property (nonatomic, strong) NSWindow* window;
-@property (nonatomic, strong) RadarView* radarView;
-@property (nonatomic, strong) NSTimer* renderTimer;
+@property (nonatomic, strong) NSWindow *window;
+@property (nonatomic, strong) RadarView *radarView;
+@property (nonatomic, strong) NSTimer *renderTimer;
 
 // ui controls
 @property (nonatomic, strong) NSPopUpButton *serialPortPopUp;
 @property (nonatomic, strong) NSButton *connectButton;
 @property (nonatomic, strong) NSButton *clearButton;
-@property (nonatomic, strong) NSTextField *ipAddressField; 
+@property (nonatomic, strong) NSTextField *ipAddressFieldLabel;
+@property (nonatomic, strong) NSTextField *ipAddressField;
 @end
 
 @implementation AppDelegate
@@ -50,80 +61,143 @@
     std::unique_ptr<Controller> _controller;
 }
 
-- (NSArray<NSString *> *)findSerialPorts {
+- (NSArray<NSString *> *)findSerialPorts
+{
     glob_t globResult;
-    if (glob("/dev/cu.*", GLOB_TILDE, NULL, &globResult) != 0) { return @[]; }
+    if (glob("/dev/cu.*", GLOB_TILDE, NULL, &globResult) != 0)
+    {
+        return @[];
+    }
     NSMutableArray<NSString *> *ports = [NSMutableArray array];
-    for (size_t i = 0; i < globResult.gl_pathc; ++i) {
+    for (size_t i = 0; i < globResult.gl_pathc; ++i)
+    {
         [ports addObject:[NSString stringWithUTF8String:globResult.gl_pathv[i]]];
     }
     globfree(&globResult);
     return ports;
 }
 
-- (void)applicationDidFinishLaunching:(NSNotification*)notification {
+- (void)applicationDidFinishLaunching:(NSNotification *)notification
+{
     id<MTLDevice> device = MTLCreateSystemDefaultDevice();
-    if (!device) {
+    if (!device)
+    {
         NSLog(@"Fatal: Metal is not supported on this device.");
         [NSApp terminate:nil];
         return;
     }
 
     NSRect frame = NSMakeRect(0, 0, 900, 700);
-    
-    self.window = [[NSWindow alloc] initWithContentRect:frame
-                                              styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable
-                                                backing:NSBackingStoreBuffered
-                                                  defer:NO];
+
+    self.window = [[NSWindow alloc]
+        initWithContentRect:frame
+                  styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable
+                    backing:NSBackingStoreBuffered
+                      defer:NO];
 
     NSView *mainContainer = [[NSView alloc] initWithFrame:frame];
     NSView *controlBar = [[NSView alloc] init];
     self.radarView = [[RadarView alloc] init];
-    
+
     controlBar.translatesAutoresizingMaskIntoConstraints = NO;
     self.radarView.translatesAutoresizingMaskIntoConstraints = NO;
-    
+
     [mainContainer addSubview:controlBar];
     [mainContainer addSubview:self.radarView];
-    
+
     self.window.contentView = mainContainer;
     self.radarView.metalLayer.device = device;
     [self.window makeKeyAndOrderFront:nil];
-    
+
     // --- create ui controls ---
     self.serialPortPopUp = [NSPopUpButton new];
     self.connectButton = [NSButton buttonWithTitle:@"Connect" target:self action:@selector(toggleConnection:)];
     self.clearButton = [NSButton buttonWithTitle:@"Clear" target:self action:@selector(clearDetections:)];
-    self.ipAddressField = [NSTextField textFieldWithString:@"192.168.1.100"]; // Default IP
+    self.ipAddressFieldLabel = [NSTextField labelWithString:@"Controller Configuration"];
+    self.ipAddressField = [NSTextField textFieldWithString:@"192.168.1.100"];  
     NSButton *setIpButton = [NSButton buttonWithTitle:@"Set IP" target:self action:@selector(setRadarIP:)];
 
-    NSArray<NSView *> *controls = @[self.serialPortPopUp, self.connectButton, self.clearButton, self.ipAddressField, setIpButton];
-    for (NSView *control in controls) {
+    // --- layout ---
+    NSDictionary *mainViews = @{@"controlBar" : controlBar, @"radarView" : self.radarView};
+
+    [mainContainer addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"V:|[controlBar]|"
+                                                                          options:0
+                                                                          metrics:nil
+                                                                            views:mainViews]];
+    [mainContainer addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"V:|[radarView]|"
+                                                                          options:0
+                                                                          metrics:nil
+                                                                            views:mainViews]];
+    [mainContainer addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"H:|[radarView][controlBar(200)]|"
+                                                                          options:0
+                                                                          metrics:nil
+                                                                            views:mainViews]];
+    
+    NSArray<NSView *> *controls = @[
+        self.serialPortPopUp, self.connectButton, self.clearButton, self.ipAddressFieldLabel, self.ipAddressField,
+        setIpButton
+    ];
+    
+    for (NSView *control in controls)
+    {
         control.translatesAutoresizingMaskIntoConstraints = NO;
         [controlBar addSubview:control];
+        [control addConstraint:[NSLayoutConstraint constraintWithItem:control
+                                                            attribute:NSLayoutAttributeWidth
+                                                            relatedBy:NSLayoutRelationEqual
+                                                               toItem:nil
+                                                            attribute:NSLayoutAttributeNotAnAttribute
+                                                           multiplier:1.0
+                                                             constant:180]];
+        [controlBar addConstraint:[NSLayoutConstraint constraintWithItem:control
+                                                               attribute:NSLayoutAttributeLeading
+                                                               relatedBy:NSLayoutRelationEqual
+                                                                  toItem:controlBar
+                                                               attribute:NSLayoutAttributeLeading
+                                                              multiplier:1.0
+                                                                constant:10]];
     }
     
-    // --- layout ---
-    NSDictionary *views = @{ @"controlBar": controlBar, @"radarView": self.radarView };
-    [mainContainer addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"H:|[controlBar]|" options:0 metrics:nil views:views]];
-    [mainContainer addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"H:|[radarView]|" options:0 metrics:nil views:views]];
-    [mainContainer addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"V:|[controlBar(40)][radarView]|" options:0 metrics:nil views:views]];
-
-    NSDictionary *controlViews = @{ @"popup": self.serialPortPopUp, @"connect": self.connectButton, @"clear": self.clearButton, @"ipField": self.ipAddressField, @"setIp": setIpButton };
-    [controlBar addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"H:|-10-[popup(200)]-10-[connect]-5-[clear]" options:NSLayoutFormatAlignAllCenterY metrics:nil views:controlViews]];
-    [controlBar addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"H:[ipField(120)]-5-[setIp]-10-|" options:NSLayoutFormatAlignAllCenterY metrics:nil views:controlViews]];
+    NSDictionary *controlViews = @{
+        @"popup" : self.serialPortPopUp,
+        @"connect" : self.connectButton,
+        @"clear" : self.clearButton,
+        @"ipFieldLabel" : self.ipAddressFieldLabel,
+        @"ipField" : self.ipAddressField,
+        @"setIp" : setIpButton
+    };
     
+    NSString *verticalLayout = @"V:|-10-[popup]"
+                               @"-10-[connect]"
+                               @"-5-[clear]"
+                               @"-20-[ipFieldLabel]"
+                               @"-10-[ipField]"
+                               @"-10-[setIp]";
+
+    [controlBar addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:verticalLayout
+                                                                       options:0
+                                                                       metrics:nil
+                                                                         views:controlViews]];
+
+
     // --- populate & finalize ---
     [self.serialPortPopUp addItemsWithTitles:[self findSerialPorts]];
-    
+
     _radarModel = std::make_shared<RadarModel>();
     _controller = std::make_unique<Controller>(_radarModel);
     _renderer = std::make_unique<Renderer>(device, _radarModel, self.radarView.metalLayer);
-    
-    self.renderTimer = [NSTimer scheduledTimerWithTimeInterval:1.0/60.0 target:self selector:@selector(mainTick:) userInfo:nil repeats:YES];
+
+    self.renderTimer = [NSTimer scheduledTimerWithTimeInterval:1.0 / 60.0
+                                                        target:self
+                                                      selector:@selector(mainTick:)
+                                                      userInfo:nil
+                                                       repeats:YES];
 }
 
-- (void)toggleConnection:(id)sender {
+- (void)toggleConnection:(id)sender
+{
+    return;
+    /*
     if (self.connectButton.state == NSControlStateValueOn) {
         NSString *selectedPort = self.serialPortPopUp.titleOfSelectedItem;
         if (!selectedPort || selectedPort.length == 0) {
@@ -139,43 +213,55 @@
         self.connectButton.title = @"Connect";
         self.serialPortPopUp.enabled = YES;
     }
+    */
 }
 
-- (void)setRadarIP:(id)sender {
+- (void)setRadarIP:(id)sender
+{
     _controller->set_radar_unit_ip([self.ipAddressField.stringValue UTF8String]);
 }
 
-- (void)clearDetections:(id)sender {
-    if (_radarModel) {
+- (void)clearDetections:(id)sender
+{
+    if (_radarModel)
+    {
         _radarModel->clear_hits();
     }
 }
 
-- (void)mainTick:(NSTimer*)timer {
-    @autoreleasepool {
-        if (_controller) {
+- (void)mainTick:(NSTimer *)timer
+{
+    @autoreleasepool
+    {
+        if (_controller)
+        {
             _controller->tick();
         }
-        if (_renderer) {
+        if (_renderer)
+        {
             _renderer->draw();
         }
     }
 }
 
-- (void)applicationWillTerminate:(NSNotification*)notification {
-    _controller.reset(); // this will disconnect serial port
+- (void)applicationWillTerminate:(NSNotification *)notification
+{
+    _controller.reset();  // this will disconnect serial port
     [self.renderTimer invalidate];
     self.renderTimer = nil;
 }
 
-- (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender {
+- (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender
+{
     return YES;
 }
 
 @end
 
-Platform::Platform() {
-    @autoreleasepool {
+Platform::Platform()
+{
+    @autoreleasepool
+    {
         NSApplication.sharedApplication.activationPolicy = NSApplicationActivationPolicyRegular;
         m_delegate = [AppDelegate new];
         NSApplication.sharedApplication.delegate = m_delegate;
@@ -183,6 +269,7 @@ Platform::Platform() {
     }
 }
 Platform::~Platform() = default;
-void Platform::run() {
+void Platform::run()
+{
     [NSApp run];
 }
