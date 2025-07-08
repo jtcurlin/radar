@@ -7,6 +7,7 @@
 #include <chrono>
 #include <vector>
 
+
 class RadarModel
 {
 public:
@@ -20,6 +21,8 @@ public:
     std::vector<float> get_cell_hit_times() const;
     float get_current_sweep_angle() const;
     void clear_hits();
+    
+    void change_resolution(uint32_t angular, uint32_t radial);
     
 private:
     std::vector<std::chrono::steady_clock::time_point> m_cell_last_hit;

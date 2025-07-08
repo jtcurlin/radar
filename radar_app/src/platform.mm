@@ -52,6 +52,9 @@
 @property (nonatomic, strong) NSButton *clearButton;
 @property (nonatomic, strong) NSTextField *ipAddressFieldLabel;
 @property (nonatomic, strong) NSTextField *ipAddressField;
+
+@property (nonatomic, strong) NSSlider *angularResSlider;
+@property (nonatomic, strong) NSSlider *radialResSlider;
 @end
 
 @implementation AppDelegate
@@ -94,6 +97,7 @@
                   styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable
                     backing:NSBackingStoreBuffered
                       defer:NO];
+    [self setupMainMenu];
 
     NSView *mainContainer = [[NSView alloc] initWithFrame:frame];
     NSView *controlBar = [[NSView alloc] init];
@@ -114,8 +118,27 @@
     self.connectButton = [NSButton buttonWithTitle:@"Connect" target:self action:@selector(toggleConnection:)];
     self.clearButton = [NSButton buttonWithTitle:@"Clear" target:self action:@selector(clearDetections:)];
     self.ipAddressFieldLabel = [NSTextField labelWithString:@"Controller Configuration"];
-    self.ipAddressField = [NSTextField textFieldWithString:@"192.168.1.100"];  
+    self.ipAddressField = [NSTextField textFieldWithString:@"192.168.1.100"];
     NSButton *setIpButton = [NSButton buttonWithTitle:@"Set IP" target:self action:@selector(setRadarIP:)];
+
+    NSTextField *radarDimsControlsLabel = [NSTextField labelWithString:@"Radar Dimensions"];
+    NSTextField *angularSliderLabel = [NSTextField labelWithString:@"Angular"];
+    NSTextField *radialSliderLabel = [NSTextField labelWithString:@"Radial"];
+    self.angularResSlider = [NSSlider sliderWithValue:30
+                                             minValue:30
+                                             maxValue:100
+                                               target:self
+                                               action:@selector(resSliderChanged:)];
+    self.angularResSlider.numberOfTickMarks = 7;
+    self.angularResSlider.allowsTickMarkValuesOnly = YES;
+
+    self.radialResSlider = [NSSlider sliderWithValue:4
+                                            minValue:2
+                                            maxValue:9
+                                              target:self
+                                              action:@selector(resSliderChanged:)];
+    self.radialResSlider.numberOfTickMarks = 7;
+    self.radialResSlider.allowsTickMarkValuesOnly = YES;
 
     // --- layout ---
     NSDictionary *mainViews = @{@"controlBar" : controlBar, @"radarView" : self.radarView};
@@ -132,12 +155,13 @@
                                                                           options:0
                                                                           metrics:nil
                                                                             views:mainViews]];
-    
+
     NSArray<NSView *> *controls = @[
         self.serialPortPopUp, self.connectButton, self.clearButton, self.ipAddressFieldLabel, self.ipAddressField,
-        setIpButton
+        setIpButton, radarDimsControlsLabel, angularSliderLabel, self.angularResSlider, radialSliderLabel,
+        self.radialResSlider
     ];
-    
+
     for (NSView *control in controls)
     {
         control.translatesAutoresizingMaskIntoConstraints = NO;
@@ -157,28 +181,37 @@
                                                               multiplier:1.0
                                                                 constant:10]];
     }
-    
+
     NSDictionary *controlViews = @{
         @"popup" : self.serialPortPopUp,
         @"connect" : self.connectButton,
         @"clear" : self.clearButton,
         @"ipFieldLabel" : self.ipAddressFieldLabel,
         @"ipField" : self.ipAddressField,
-        @"setIp" : setIpButton
+        @"setIp" : setIpButton,
+        @"radarResLabel" : radarDimsControlsLabel,
+        @"angularResLabel" : angularSliderLabel,
+        @"angularResSlider" : self.angularResSlider,
+        @"radialResLabel" : radialSliderLabel,
+        @"radialResSlider" : self.radialResSlider
     };
-    
+
     NSString *verticalLayout = @"V:|-10-[popup]"
                                @"-10-[connect]"
                                @"-5-[clear]"
                                @"-20-[ipFieldLabel]"
                                @"-10-[ipField]"
-                               @"-10-[setIp]";
+                               @"-10-[setIp]"
+                               @"-30-[radarResLabel]"
+                               @"-10-[angularResLabel]"
+                               @"-5-[angularResSlider]"
+                               @"-10-[radialResLabel]"
+                               @"-5-[radialResSlider]";
 
     [controlBar addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:verticalLayout
                                                                        options:0
                                                                        metrics:nil
                                                                          views:controlViews]];
-
 
     // --- populate & finalize ---
     [self.serialPortPopUp addItemsWithTitles:[self findSerialPorts]];
@@ -229,6 +262,13 @@
     }
 }
 
+- (void)resSliderChanged:(NSSlider *)sender
+{
+    NSInteger angular = self.angularResSlider.integerValue;
+    NSInteger radial = self.radialResSlider.integerValue;
+    _radarModel->change_resolution((uint32_t)angular, (uint32_t)radial);
+}
+
 - (void)mainTick:(NSTimer *)timer
 {
     @autoreleasepool
@@ -244,11 +284,45 @@
     }
 }
 
+- (void)setupMainMenu
+{
+    NSMenu *mainMenu = [[NSMenu alloc] init];
+
+    NSMenuItem *appMenuItem = [[NSMenuItem alloc] init];
+    [mainMenu addItem:appMenuItem];
+    [NSApp setMainMenu:mainMenu];
+
+    NSMenu *appMenu = [[NSMenu alloc] initWithTitle:@"Radar"];
+
+    NSString *appName = [[NSProcessInfo processInfo] processName];
+    NSString *quitTitle = [NSString stringWithFormat:@"Quit %@", appName];
+    NSMenuItem *quitItem = [[NSMenuItem alloc] initWithTitle:quitTitle
+                                                       action:@selector(terminate:)
+                                                keyEquivalent:@"q"];
+    [appMenu addItem:quitItem];
+
+    [appMenuItem setSubmenu:appMenu];
+}
+
+- (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication *)sender
+{
+    if (self.renderTimer != nil)
+    {
+        [self.renderTimer invalidate];
+        self.renderTimer = nil;
+    }
+    
+    _controller.reset();
+    _renderer.reset();
+    _radarModel.reset();
+    
+    return NSTerminateNow;
+}
+
+
 - (void)applicationWillTerminate:(NSNotification *)notification
 {
-    _controller.reset();  // this will disconnect serial port
-    [self.renderTimer invalidate];
-    self.renderTimer = nil;
+    return;
 }
 
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender

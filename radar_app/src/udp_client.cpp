@@ -41,6 +41,7 @@ void UdpClient::start_listening(int port) {
     }
 
     m_is_listening = true;
+    /*
     m_listener_thread = std::thread([this] {
         char buffer[1024];
         while (m_is_listening) {
@@ -49,6 +50,30 @@ void UdpClient::start_listening(int port) {
             ssize_t n = recvfrom(m_socket_fd, buffer, sizeof(buffer), 0, (struct sockaddr *)&client_addr, &len);
             if (n > 0) {
                 m_handler(buffer, n);
+            }
+        }
+    });
+    */
+    m_listener_thread = std::thread([this] {
+        char buffer[1024];
+        while (m_is_listening) {
+            fd_set read_fds;
+            FD_ZERO(&read_fds);
+            FD_SET(m_socket_fd, &read_fds);
+
+            struct timeval timeout;
+            timeout.tv_sec = 0;
+            timeout.tv_usec = 500000;  // 500 ms timeout
+
+            int result = select(m_socket_fd + 1, &read_fds, NULL, NULL, &timeout);
+
+            if (result > 0 && FD_ISSET(m_socket_fd, &read_fds)) {
+                sockaddr_in client_addr{};
+                socklen_t len = sizeof(client_addr);
+                ssize_t n = recvfrom(m_socket_fd, buffer, sizeof(buffer), 0, (struct sockaddr *)&client_addr, &len);
+                if (n > 0) {
+                    m_handler(buffer, n);
+                }
             }
         }
     });

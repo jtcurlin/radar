@@ -2,6 +2,7 @@
 
 #include "radar.hpp"
 #include <cmath>
+#include <iostream>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -64,4 +65,11 @@ void RadarModel::clear_hits()
     
     // reset all hit times to a long time ago
     std::fill(m_cell_last_hit.begin(), m_cell_last_hit.end(), std::chrono::steady_clock::now() - std::chrono::hours(1));
+}
+
+void RadarModel::change_resolution(uint32_t angular, uint32_t radial)
+{
+    // m_angular_res = angular;
+    // m_radial_res = radial;
+    std::cout << "RadarModel::change_resolution(" << angular << ", " << radial << ")" << std::endl;
 }
